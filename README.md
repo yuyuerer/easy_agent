@@ -1,5 +1,5 @@
-# easy_angent
-first try
+#常见git指令
+
 
 
 
