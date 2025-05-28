@@ -6,6 +6,7 @@ from autogen_agentchat.ui import Console
 from autogen_core.tools import FunctionTool
 from autogen_agentchat.conditions import TextMentionTermination, MaxMessageTermination
 from autogen_agentchat.teams import RoundRobinGroupChat, SelectorGroupChat
+from autogen_ext.tools.mcp import McpWorkbench, StdioServerParams, SseServerParams
 
 from google_search import google_search_tool
 from fetch_webpage import fetch_webpage_tool
@@ -23,6 +24,12 @@ client = OpenAIChatCompletionClient(model="qwen-turbo-latest",
         "structured_output": False,
     },
 )
+
+server_params = SseServerParams(
+      url = "https://open.bigmodel.cn/api/mcp/web_search/sse?Authorization=d25852aa856b47bfb43792e801f4e552.09cTV7pN93VAkjs3"
+    )
+
+mcp = McpWorkbench(server_params)
 
 require_agent = AssistantAgent("require_agent", 
                         model_client=client, 
@@ -70,7 +77,9 @@ research_assistant = AssistantAgent(
     name="Research_Assistant",
     description="A research assistant that performsweb searches and analyzes information",
     model_client=client,
-    tools=[google_search_tool, fetch_webpage_tool],
+    workbench=mcp,
+    reflect_on_tool_use=True,
+    model_client_stream=True,
     system_message="""
     您是一名专注于汽车设计领域的技术研究助手。您的职责是：
 
