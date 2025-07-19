@@ -4,15 +4,30 @@
 import os
 import asyncio
 import requests
+from pathlib import Path
+from config import config
 from autogen_agentchat.agents import AssistantAgent
 from autogen_ext.models.openai import OpenAIChatCompletionClient
-from config import config
+from autogen_core.tools import FunctionTool
 from autogen_ext.tools.mcp import McpWorkbench, StdioServerParams, mcp_server_tools
+from utils.cli_research import web_deep_research
 from utils.fetch_webpage import fetch_webpage_tool
 from utils.google_search import google_search_tool
+from agent_response import AnalystResponse
+from prompt import (analyst_prompt, file_saver_prompt)
 
 
-
+async def get_deep_research_tool():
+    """获取深度研究工具"""
+    return FunctionTool(
+        web_deep_research,
+        description="""Perform a deep web research on the given question using the LangGraph.
+        Args:
+            question (str): The question to research.
+        Returns:
+            str: The final answer after research.
+        """,
+    )
 
 
 def get_model_client():
@@ -31,39 +46,39 @@ def get_model_client():
     )
 
 
-def create_design_analyst(client, tools=None):
+async def create_design_analyst(client):
     """创建汽车设计需求分析智能体"""
+    deep_research_tool = await get_deep_research_tool()
     return AssistantAgent(
         name="DesignAnalyst",
-        description="汽车设计需求分析专家，负责细化汽车设计要素",
+        description="汽车设计需求分析专家，您的目标是根据用户输入的模糊设计需求实现竞品分析，生成一系列复杂多样的网络搜索查询。这些查询旨在用于高级自动化网络研究工具，该工具能够分析复杂结果、跟踪链接和综合信息。",
         model_client=client,
-        tools=tools or [],
-        system_message="""您的目标是生成复杂多样的网络搜索查询。这些查询旨在用于高级自动化网络研究工具，该工具能够分析复杂结果、跟踪链接和综合信息。
+        tools=[deep_research_tool],
+        system_message=analyst_prompt,
+    )
 
-指示：
-- 始终优先选择单个搜索查询，只有当原始问题要求多个方面或元素且一个查询不足时才添加另一个查询。
-- 每个查询应专注于原始问题的一个特定方面，例如汽车外观设计、运动型SUV的特点等。
-- 不要生成超过10个查询。
-- 查询应当多样化，如果主题范围广泛，生成多于1个查询。
-- 不要生成多个相似的查询，1个就足够了。
-- 查询应确保收集最新信息。
 
-格式：
-- 将您的回复格式化为一个JSON对象，包含这两个精确的键：
-   - "rationale"：为什么这些查询相关的简要解释
-   - "query"：搜索查询列表
+async def create_report_saver(client):
+    """创建报告保存智能体"""
+    file_mcp = await initialize_file_tools()
+    return AssistantAgent(
+        name="ReportSaver",
+        description="汽车设计报告保存专家，负责将生成的设计报告保存到指定位置",
+        model_client=client,
+        tools=file_mcp,
+        system_message=file_saver_prompt,
+    )
 
-示例：
-
-Context：我想要一个运动型的SUV，希望外观看起来比较有攻击性
-```json
-{{
-    "rationale": "为了找到符合用户需求的运动型SUV，我们需要针对汽车外观设计、运动型特点以及市场上流行的SUV车型进行搜索。这些查询旨在收集关于外观设计趋势、运动型SUV的市场评价以及具体车型的相关信息。",
-    "query": ["运动型SUV外观设计趋势", "攻击性外观的SUV推荐", "2025年运动型SUV市场评价"],
-}}
- ```
-
- """
+async def create_image_saver(client):
+    """创建图片保存智能体"""
+    img_mcp = await initialize_image_tools()
+    return AssistantAgent(
+        name="ImageSaver",
+        description="图片保存专家，负责根据提供的图片URL下载并保存图片",
+        model_client=client,
+        tools=img_mcp,
+        system_message="""您是一名专业的图片处理专家，负责根据提供的图片URL下载并保存图片。
+        """,
     )
 
 def create_market_researcher(client, tools=None):
@@ -169,11 +184,11 @@ async def create_all_agents():
     
     # 获取MCP工具
     file_mcp = await initialize_file_tools()
-    img_mcp = await initialize_image_tools()
+    # img_mcp = await initialize_image_tools()
     # web_mcp = await initialize_web_tools()
     
     agents = {
-        'design_analyst': create_design_analyst(client),
+        'design_analyst': await create_design_analyst(client),
         'market_researcher': create_market_researcher(client, [google_search_tool, fetch_webpage_tool]),
         'reflect_analyst': create_reflect_analyst(client),
         #'image_saver': create_image_saver(client, img_mcp),  
@@ -193,17 +208,22 @@ async def create_all_agents():
 
 def _get_file_system_params() -> StdioServerParams:
     """获取文件系统MCP服务器参数"""
-    output_dir = config.get_output_dir()
+    # 使用当前工作目录，而不是输出目录
+    current_dir = Path.cwd()
     
     return StdioServerParams(
         command="npx",
         args=[
             "-y",
             "@modelcontextprotocol/server-filesystem",
-            str(output_dir),
+            str(current_dir),
         ],
         read_timeout_seconds=30,
     )
+async def initialize_file_tools():
+    file_system_params = _get_file_system_params()
+    file_server_tools = await mcp_server_tools(file_system_params)
+    return file_server_tools
 
 def _get_img_save_params() -> StdioServerParams:
     """获取图片保存MCP服务器参数"""
@@ -226,14 +246,10 @@ def _get_img_save_params() -> StdioServerParams:
 #     web_server_tools = await mcp_server_tools(web_search_params)
 #     return web_server_tools
 
-async def initialize_file_tools():
-    file_system_params = _get_file_system_params()
-    file_server_tools = await mcp_server_tools(file_system_params)
-    return file_server_tools
 
-async def initialize_image_tools():
-    """初始化图片工具，带有超时处理"""
-    img_save_params = _get_img_save_params()
-    img_server_tools = await mcp_server_tools(img_save_params)
-    return img_server_tools
-    
+
+# async def initialize_image_tools():
+#     """初始化图片工具，带有超时处理"""
+#     img_save_params = _get_img_save_params()
+#     img_server_tools = await mcp_server_tools(img_save_params)
+#     return img_server_tools
