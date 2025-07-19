@@ -69,133 +69,44 @@ async def create_report_saver(client):
         system_message=file_saver_prompt,
     )
 
-async def create_image_saver(client):
-    """创建图片保存智能体"""
-    img_mcp = await initialize_image_tools()
+async def create_competitor_analyst(client):
+    """创建竞品分析智能体"""
+    file_mcp = await initialize_file_tools()
     return AssistantAgent(
-        name="ImageSaver",
-        description="图片保存专家，负责根据提供的图片URL下载并保存图片",
+        name="CompetitorAnalyst",
+        description="竞品分析专家，负责根据用户输入的竞品信息进行分析和总结",
         model_client=client,
-        tools=img_mcp,
-        system_message="""您是一名专业的图片处理专家，负责根据提供的图片URL下载并保存图片。
+        tools= [],
+        system_message="""
+        您是竞品分析专家，负责处理其他智能体输出的分析结果，从中提取车型名称信息。
+
+任务：
+- 接收其他agent的输出结果作为输入
+- 从输入内容中识别并提取所有车型名称
+- 将车型名称整理并保存为JSON格式
+
+具体步骤：
+1. 仔细分析输入的内容（可能包含设计分析报告、市场研究结果等）
+2. 识别所有提到的车型名称（例如：比亚迪唐DM-i、理想L8、蔚来ES6、特斯拉Model Y等）
+3. 提取完整且准确的车型名称
+4. 将提取的车型名称保存为JSON格式
+
+输出格式：
+```json
+{"extracted_vehicle_models": ["比亚迪唐DM-i", "理想L8", "蔚来ES6"]}
+```
+
+注意事项：
+- 只提取车型名称，不包含其他分析内容
+- 确保车型名称的完整性和准确性
+- 去除重复的车型名称
+- 如果没有找到车型名称，返回空数组
         """,
     )
 
-def create_market_researcher(client, tools=None):
-    """创建汽车市场信息搜集智能体"""
-    return AssistantAgent(
-        name="MarketResearcher",
-        description="汽车市场研究专家，负责搜集车型信息和市场数据",
-        model_client=client,
-        tools=tools or [],
-        system_message="""进行有针对性的 Google 搜索，以收集关于 "{research_topic}" 的最新、可信的信息，并将其合成为可验证的文本资料。
 
-指示：
-- 查询应确保收集最新的信息。当前日期是 {current_date}。
-- 进行多种多样的搜索以收集全面的信息。
-- 整合关键发现，同时仔细跟踪每条具体信息的来源。
-- 输出应基于您的搜索结果，形成一份精心撰写的摘要或报告。
-- 只包含在搜索结果中找到的信息，不要编造任何信息。
 
-研究主题：
-{research_topic}
-"""
 
-    )
-
-def create_reflect_analyst(client, tools=None):
-    """创建反思分析智能体"""
-    return AssistantAgent(
-        name="ReflectAnalyst",
-        description="反思分析专家，负责识别知识缺口并生成后续查询",
-        model_client=client,
-        tools=tools or [],
-        system_message="""您是一位分析关于 "{research_topic}" 摘要的专家研究助手。
-
-指示：
-- 识别知识缺口或需要深入探索的领域，并生成后续查询（1个或多个）。
-- 如果提供的摘要足以回答用户的问题，则不要生成后续查询。
-- 如果存在知识缺口，生成有助于扩展理解的后续查询。
-- 关注技术细节、实施细节或未完全涵盖的新兴趋势。
-
-要求：
-- 确保后续查询是自包含的，并包含网络搜索所需的必要上下文。
-
-输出格式：
-- 将您的回复格式化为一个JSON对象，包含以下精确的键：
-   - "is_sufficient"：true 或 false
-   - "knowledge_gap"：描述缺少哪些信息或需要澄清的内容
-   - "follow_up_queries"：编写解决此缺口的具体问题
-
-示例：
-```json
-{{
-    "is_sufficient": true, // 或 false
-    "knowledge_gap": "摘要缺少关于性能指标和基准的信息", // 如果 is_sufficient 为 true 则为 ""
-    "follow_up_queries": ["评估[特定技术]通常使用哪些性能基准和指标？"] // 如果 is_sufficient 为 true 则为 []
-}}
-```
-仔细反思摘要以识别知识缺口并提出后续查询。然后，按照此 JSON 格式提供您的输出，
-
-当is_sufficient为true时，在输出结尾添加'APPROVE'
-当is_sufficient为false时，在输出结尾添加'REJECT'
-
-""" 
-    )
-
-def create_design_report_generator(client, tools=None):
-    """创建汽车设计报告生成智能体"""
-    return AssistantAgent(
-        name="ReportGenerator",
-        description="汽车设计报告专家，负责生成设计开发指导报告",
-        model_client=client,
-        tools=tools or [],
-        system_message="""
-根据提供的摘要生成用户问题的高质量回答。
-
-指示：
-- 当前日期是 {current_date}。
-- 您是多步骤研究过程的最后一步，但不要提及您是最后一步。
-- 您可以访问从前面步骤收集的所有信息。
-- 您可以访问用户的问题。
-- 根据提供的摘要和用户的问题生成高质量的回答。
-- 在答案中正确包含您从摘要中使用的来源，使用 Markdown 格式（例如 [apnews](https://vertexaisearch.cloud.google.com/id/1-0)）。这是必须的。
-
-在报告末尾添加"TERMINATE"以标识任务完成。
-        """
-    )
-
-# def create_image_saver(client, tools=None):
-#     """创建图片保存智能体"""
-#     return AssistantAgent(
-#         name="ImageSaver",
-#         description="图片保存专家，负责根据提供的图片URL下载并保存图片",
-#         model_client=client,
-#         tools=tools or [],
-#         system_message="""
-# 你是一名专业的图片处理专家，负责根据提供的图片URL下载并保存图片。
-
-#         """
-#     )
-
-async def create_all_agents():
-    """创建所有智能体"""
-    client = get_model_client()
-    
-    # 获取MCP工具
-    file_mcp = await initialize_file_tools()
-    # img_mcp = await initialize_image_tools()
-    # web_mcp = await initialize_web_tools()
-    
-    agents = {
-        'design_analyst': await create_design_analyst(client),
-        'market_researcher': create_market_researcher(client, [google_search_tool, fetch_webpage_tool]),
-        'reflect_analyst': create_reflect_analyst(client),
-        #'image_saver': create_image_saver(client, img_mcp),  
-        'design_report_generator': create_design_report_generator(client, file_mcp),
-    }
-    
-    return agents, client
 
 # def _get_web_search_params() -> StdioServerParams:
 #     """获取网络搜索MCP服务器参数"""
@@ -210,7 +121,6 @@ def _get_file_system_params() -> StdioServerParams:
     """获取文件系统MCP服务器参数"""
     # 使用当前工作目录，而不是输出目录
     current_dir = Path.cwd()
-    
     return StdioServerParams(
         command="npx",
         args=[
@@ -246,10 +156,18 @@ def _get_img_save_params() -> StdioServerParams:
 #     web_server_tools = await mcp_server_tools(web_search_params)
 #     return web_server_tools
 
+async def initialize_image_tools():
+    """初始化图片工具，带有超时处理"""
+    img_save_params = _get_img_save_params()
+    img_server_tools = await mcp_server_tools(img_save_params)
+    return img_server_tools
 
-
-# async def initialize_image_tools():
-#     """初始化图片工具，带有超时处理"""
-#     img_save_params = _get_img_save_params()
-#     img_server_tools = await mcp_server_tools(img_save_params)
-#     return img_server_tools
+def create_image_saver(client, tools=None):
+    """创建图片保存智能体"""
+    return AssistantAgent(
+        name="ImageSaver",
+        description="图片保存专家，负责根据提供的竞品车型分析内容查找并保存车型图片",
+        model_client=client,
+        tools=tools or [],
+        system_message=image_saver_prompt,
+    )
